@@ -1,0 +1,36 @@
+name: Deploy LMS
+
+on:
+  push:
+    branches:
+      - develop  
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest 
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: WireGuard connection
+        run: |
+          sudo apt update
+          sudo apt install -y wireguard
+          echo "${{ secrets.WIREGUARD_CONFIG }}" | sudo tee /etc/wireguard/wg0.conf > /dev/null
+          sudo wg-quick up wg0
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Deploy LMS
+        env:
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          USERNAME: ${{ secrets.USERNAME }}
+        run: |
+          rsync -avz -e "ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no" ./ $USERNAME@$SERVER_IP:/var/www/lms
+
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $USERNAME@$SERVER_IP "cd /var/www/lms && docker-compose up -d --build"
